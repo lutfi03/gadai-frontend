@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulasi Jasa Gadai</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+body {
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  margin: 0;
+  padding-bottom: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+* { transition: all 0.25s ease; }
+
+.container {
+  background: #fff;
+  padding: 25px;
+  border-radius: 18px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+h2 { text-align: center; }
+
+#formHitung {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#formHitung label {
+  width: 100%;
+  max-width: 300px;
+  text-align: left;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+#formHitung input,
+#formHitung button {
+  width: 100%;
+  max-width: 300px;
+  padding: 10px;
+  margin-top: 5px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+}
+
+button {
+  margin-top: 15px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.hasil {
+  margin-top: 20px;
+  display: none;
+}
+
+.card {
+  background: #f9fafc;
+  padding: 15px;
+  border-radius: 12px;
+  margin-top: 10px;
+}
+
+.card b { float: right; }
+
+.total {
+  background: linear-gradient(135deg,#667eea,#764ba2);
+  color: white;
+  text-align: center;
+}
+
+.periode { font-size: 13px; color: #666; }
+
+.caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-top: 15px;
+}
+
+.caption::before,
+.caption::after {
+  content: "";
+  flex: 1;
+  border-bottom: 2px solid #ddd;
+}
+
+.caption::before { margin-right: 10px; }
+.caption::after { margin-left: 10px; }
+
+#detailBox {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.6s ease;
+}
+
+#detailBox.show {
+  max-height: 1000px;
+}
+
+/* ALERT JATUH TEMPO */
+.alert-jatuh-tempo {
+  background: linear-gradient(135deg, #ff4d4d, #b30000);
+  color: white;
+  text-align: center;
+  padding: 15px;
+  border-radius: 12px;
+  font-weight: bold;
+  margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h2>Simulasi Gadai</h2>
+
+<form id="formHitung">
+<label>Tanggal Pinjam</label>
+<input type="date" id="tglPinjam" required>
+
+<label>Tanggal Ambil</label>
+<input type="date" id="tglBayar" required>
+
+<label>Pinjaman (Rp)</label>
+<input type="text" id="pinjaman" inputmode="numeric" required>
+
+<button type="submit" id="btnHitung">Hitung</button>
+</form>
+
+<div class="alert-jatuh-tempo" id="alertJatuhTempo" style="display:none;"></div>
+
+<div class="hasil" id="hasil"></div>
+</div>
+
+<script>
+const formHitung = document.getElementById("formHitung");
+
+function rupiah(n){
+  return "Rp " + Number(n).toLocaleString("id-ID");
+}
+
+// format input rupiah
+const inputPinjaman = document.getElementById("pinjaman");
+inputPinjaman.addEventListener("input", function(){
+  let angka = this.value.replace(/[^\d]/g, "");
+  this.value = angka ? new Intl.NumberFormat("id-ID").format(angka) : "";
+});
+
+// submit form
+formHitung.addEventListener("submit", async function(e){
+  e.preventDefault();
+
+  const btn = document.getElementById("btnHitung");
+  btn.disabled = true;
+  btn.innerText = "Menghitung...";
+
+  const tglPinjam = document.getElementById("tglPinjam").value;
+  const tglBayar = document.getElementById("tglBayar").value;
+  const pinjaman = document.getElementById("pinjaman").value.replace(/\./g, "");
+
+  try {
+    const res = await fetch("https://gadai-backend-production.up.railway.app/hitung", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        tglPinjam,
+        tglBayar,
+        pinjaman: Number(pinjaman)
+      })
+    });
+
+    if (!res.ok) throw new Error("Server error");
+
+    const data = await res.json();
+    tampilkanHasil(data);
+
+  } catch(err){
+    alert("Gagal koneksi ke server");
+  } finally {
+    btn.disabled = false;
+    btn.innerText = "Hitung";
+  }
+});
+
+// toggle detail
+function toggleDetail(){
+  const box = document.getElementById("detailBox");
+  const btn = document.getElementById("btnDetail");
+
+  if (!box) return;
+
+  const open = box.classList.contains("show");
+
+  if(open){
+    box.classList.remove("show");
+    btn.innerText = "Lihat Detail";
+  } else {
+    box.classList.add("show");
+    btn.innerText = "Sembunyikan Detail";
+  }
+}
+
+// tampilkan hasil
+function tampilkanHasil(data){
+
+  const alertBox = document.getElementById("alertJatuhTempo");
+  const hasil = document.getElementById("hasil");
+
+  // reset alert
+  alertBox.style.display = "none";
+  alertBox.innerHTML = "";
+
+  // ==========================
+  // ONLY JATUH TEMPO > 90 HARI
+  // ==========================
+  if (data.hari > 90) {
+    alertBox.style.display = "block";
+    alertBox.innerHTML = "🚨 JATUH TEMPO! Sudah melebihi 90 hari, segera lakukan pelunasan.";
+  }
+
+  let rincian = "";
+  let rincianDenda = "";
+
+  data.rincian.forEach(r => {
+    rincian += `
+    <div class="card">
+      <div class="periode">Jasa ${r.jasa}</div>
+      ${r.hari} hari → ${r.persen}%
+      <b>${rupiah(r.bunga)}</b>
+    </div>`;
+  });
+
+  if(data.rincianDenda.length){
+    data.rincianDenda.forEach(d => {
+      rincianDenda += `
+      <div class="card">
+        <div class="periode">Denda ${d.denda}</div>
+        ${d.hari} hari → ${d.persen}%
+        <b>${rupiah(d.nominal)}</b>
+      </div>`;
+    });
+  }
+
+  hasil.style.display = "block";
+
+  hasil.innerHTML = `
+    <div class="card">
+      Lama Pinjam <b>${data.hari} hari</b>
+    </div>
+
+    <div class="card">
+      Pokok Pinjaman <b>${rupiah(data.pinjaman)}</b>
+    </div>
+
+    <div class="card">
+      Jasa <b>${rupiah(data.totalJasa)}</b>
+    </div>
+
+    <div class="card total">
+      Total Bayar
+      <h2>${rupiah(data.totalBayar)}</h2>
+    </div>
+
+    <button id="btnDetail" onclick="toggleDetail()">
+      Lihat Detail
+    </button>
+
+    <div id="detailBox">
+      <div class="caption">Rincian Jasa</div>
+      ${rincian}
+      ${rincianDenda ? `<div class="caption">Rincian Denda</div>${rincianDenda}` : ""}
+    </div>
+  `;
+}
+</script>
+
+</body>
+</html>
